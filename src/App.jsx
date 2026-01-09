@@ -913,11 +913,11 @@ const App = () => {
               <RotateCw className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="font-bold text-lg tracking-tight leading-none">
+              <h1 className="font-bold text-2xl tracking-tight leading-none">
                 專任代導輪值系統
               </h1>
               <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-[10px] opacity-70 font-mono">
+                <p className="text-xs opacity-70 font-mono">
                   Cloud Sync Active (JS)
                 </p>
                 {isOnline ? (
@@ -1044,11 +1044,11 @@ const App = () => {
           {/* 待辦任務 */}
           <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-5 bg-slate-50 border-b flex justify-between items-center">
-              <h2 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase tracking-widest">
+              <h2 className="font-bold text-slate-700 flex items-center gap-2 text-lg uppercase tracking-widest">
                 <CalendarDays className="w-5 h-5 text-indigo-500" />{' '}
                 當前待辦任務
               </h2>
-              <span className="bg-indigo-600 text-white text-[10px] px-2.5 py-1 rounded-full font-black">
+              <span className="bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-full font-black">
                 {activeRequests.length}
               </span>
             </div>
@@ -1066,7 +1066,7 @@ const App = () => {
                     >
                       <div className="flex justify-between items-start mb-4">
                         <span
-                          className={`text-[10px] font-black px-3 py-1 rounded-lg border uppercase ${
+                          className={`text-xs font-black px-3 py-1 rounded-lg border uppercase ${
                             req.status === 'accepted'
                               ? 'border-indigo-200 text-indigo-600 bg-indigo-50'
                               : 'border-amber-200 text-amber-600 bg-amber-50'
@@ -1074,23 +1074,23 @@ const App = () => {
                         >
                           {req.status === 'accepted' ? '已對接' : '待對接'}
                         </span>
-                        <span className="text-[10px] font-mono font-bold text-slate-400">
+                        <span className="text-xs font-mono font-bold text-slate-400">
                           {req.date}
                         </span>
                       </div>
                       <div className="flex items-center gap-2 mb-6 bg-slate-50 p-3 rounded-xl">
                         <div className="flex-1 text-center">
-                          <p className="text-[10px] text-slate-400 font-bold mb-1">
+                          <p className="text-xs text-slate-400 font-bold mb-1">
                             請假導師
                           </p>
-                          <p className="font-bold">{req.absentTeacherName}</p>
+                          <p className="font-bold text-lg">{req.absentTeacherName}</p>
                         </div>
                         <ArrowRight className="w-4 h-4 text-indigo-300" />
                         <div className="flex-1 text-center">
-                          <p className="text-[10px] text-slate-400 font-bold mb-1">
+                          <p className="text-xs text-slate-400 font-bold mb-1">
                             代理專任
                           </p>
-                          <p className="font-bold text-indigo-700">
+                          <p className="font-bold text-lg text-indigo-700">
                             {req.substituteName}
                           </p>
                         </div>
@@ -1098,21 +1098,21 @@ const App = () => {
                       <div className="grid grid-cols-2 gap-3">
                         <button
                           onClick={() => deleteRequest(req.id)}
-                          className="text-xs py-2.5 border border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-red-50 hover:text-red-500 transition-all"
+                          className="text-sm py-2.5 border border-slate-200 rounded-xl text-slate-400 font-bold hover:bg-red-50 hover:text-red-500 transition-all"
                         >
                           移除
                         </button>
                         {req.status === 'pending' ? (
                           <button
                             onClick={() => acceptRequest(req.id)}
-                            className="text-xs py-2.5 bg-amber-500 text-white rounded-xl font-bold shadow-md hover:bg-amber-600"
+                            className="text-sm py-2.5 bg-amber-500 text-white rounded-xl font-bold shadow-md hover:bg-amber-600"
                           >
                             接受委託
                           </button>
                         ) : (
                           <button
                             onClick={() => confirmCompletion(req)}
-                            className="text-xs py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 flex items-center justify-center gap-1"
+                            className="text-sm py-2.5 bg-indigo-600 text-white rounded-xl font-bold shadow-md hover:bg-indigo-700 flex items-center justify-center gap-1"
                           >
                             <CheckCircle2 className="w-3.5 h-3.5" /> 完成結案
                           </button>
@@ -1128,7 +1128,7 @@ const App = () => {
           {/* 輪值清單 */}
           <section className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <div className="px-6 py-5 bg-slate-50 border-b flex items-center justify-between">
-              <h2 className="font-bold text-slate-700 flex items-center gap-2 text-sm uppercase tracking-widest">
+              <h2 className="font-bold text-slate-700 flex items-center gap-2 text-lg uppercase tracking-widest">
                 <Users className="w-5 h-5 text-indigo-500" />{' '}
                 輪值順序（全體同步）
               </h2>
@@ -1149,7 +1149,7 @@ const App = () => {
                     }`}
                   >
                     <div
-                      className={`font-mono font-black text-xl w-8 text-center ${
+                      className={`font-mono font-black text-2xl w-8 text-center ${
                         t.isAvailable ? 'text-indigo-600' : 'text-slate-400'
                       }`}
                     >
@@ -1157,19 +1157,19 @@ const App = () => {
                     </div>
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <p className="font-bold text-slate-800 text-lg">
+                        <p className="font-bold text-slate-800 text-xl">
                           {t.name}
                         </p>
-                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg font-black">
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-lg font-black">
                           {t.subject}
                         </span>
                         {isBusy && (
-                          <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg flex items-center gap-1 font-bold animate-pulse">
+                          <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-lg flex items-center gap-1 font-bold animate-pulse">
                             <Clock className="w-3 h-3" /> 任務中
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-1">
+                      <p className="text-sm text-slate-400 mt-1">
                         累計代理次數：
                         <span className="text-indigo-600 font-bold">
                           {t.totalSubstitutions}
@@ -1178,13 +1178,13 @@ const App = () => {
                     </div>
                     <div className="flex flex-col sm:flex-row items-center gap-3">
                       {isNext && t.isAvailable && (
-                        <span className="text-[10px] text-amber-600 font-black tracking-wider bg-amber-50 px-2 py-1 rounded">
+                        <span className="text-xs text-amber-600 font-black tracking-wider bg-amber-50 px-2 py-1 rounded">
                           智慧輪值下一位
                         </span>
                       )}
                       <button
                         onClick={() => toggleAvailability(t.id)}
-                        className={`text-[10px] px-5 py-2.5 rounded-xl font-black border transition-all shadow-sm active:scale-95 ${
+                        className={`text-xs px-5 py-2.5 rounded-xl font-black border transition-all shadow-sm active:scale-95 ${
                           t.isAvailable
                             ? 'bg-white text-slate-400 hover:text-red-500 hover:border-red-200'
                             : 'bg-emerald-600 text-white border-emerald-700'
@@ -1208,7 +1208,7 @@ const App = () => {
         {/* 側邊欄 */}
         <div className="space-y-6">
           <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <h2 className="font-bold text-slate-700 mb-6 text-xs flex items-center gap-2 uppercase tracking-widest">
+            <h2 className="font-bold text-slate-700 mb-6 text-base flex items-center gap-2 uppercase tracking-widest">
               <BarChart3 className="w-5 h-5 text-indigo-500" /> 工作量平衡統計
             </h2>
             <div className="space-y-6">
@@ -1220,7 +1220,7 @@ const App = () => {
                 const pct = (t.totalSubstitutions / max) * 100;
                 return (
                   <div key={t.id}>
-                    <div className="flex justify-between text-[11px] font-bold mb-2">
+                    <div className="flex justify-between text-sm font-bold mb-2">
                       <span className="text-slate-600">{t.name}</span>
                       <span className="text-indigo-600 font-mono">
                         {t.totalSubstitutions} 次
@@ -1239,23 +1239,23 @@ const App = () => {
           </section>
 
           <section className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-            <h2 className="font-bold text-slate-700 mb-5 text-xs flex items-center gap-2 uppercase tracking-widest">
+            <h2 className="font-bold text-slate-700 mb-5 text-base flex items-center gap-2 uppercase tracking-widest">
               <HistoryIcon className="w-5 h-5 text-indigo-500" /> 歷史完成紀錄
             </h2>
             <div className="space-y-3 max-h-[350px] overflow-y-auto pr-1 custom-scrollbar">
               {history.length === 0 ? (
-                <p className="text-[11px] text-slate-300 text-center italic py-6">
+                <p className="text-sm text-slate-300 text-center italic py-6">
                   目前無紀錄
                 </p>
               ) : (
                 history.map((h) => (
                   <div
                     key={h.id}
-                    className="text-[11px] p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-md transition-all"
+                    className="text-sm p-4 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-md transition-all"
                   >
                     <div className="flex justify-between font-black text-indigo-600 mb-2">
                       <span>{h.substituteName}</span>
-                      <span className="font-mono text-[9px] text-slate-400">
+                      <span className="font-mono text-xs text-slate-400">
                         {h.date}
                       </span>
                     </div>
@@ -1275,7 +1275,7 @@ const App = () => {
       </main>
 
       <footer className="max-w-6xl mx-auto px-4 mt-16 py-12 border-t border-slate-200 text-center">
-        <p className="text-[10px] text-slate-400 font-black tracking-[0.3em] uppercase">
+        <p className="text-xs text-slate-400 font-black tracking-[0.3em] uppercase">
           School Admin Rotation Intelligence • Firebase Cloud v7.2 (JS)
         </p>
       </footer>
