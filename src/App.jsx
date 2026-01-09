@@ -21,6 +21,8 @@ import {
   CheckCircle2,
   Wifi,
   WifiOff,
+  Lock,
+  Eraser, // 新增圖標
 } from 'lucide-react';
 
 // --- Firebase Imports ---
@@ -68,7 +70,15 @@ const App = () => {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
 
+  // 管理中心相關狀態
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+
+  // 為了管理介面的 UI 切換 (老師名單 / 歷史紀錄)
+  const [settingsTab, setSettingsTab] = useState('roster'); // 'roster' | 'history'
+
   const [isAddingRequest, setIsAddingRequest] = useState(false);
 
   const [confirmModal, setConfirmModal] = useState({
@@ -98,7 +108,7 @@ const App = () => {
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setIsAuthReady(true); // 認證狀態確定後，顯示主畫面
+      setIsAuthReady(true);
       setIsOnline(!!currentUser);
     });
     return () => unsubscribe();
@@ -200,6 +210,17 @@ const App = () => {
   const updateRoster = async (newTeacherList) => {
     if (!user) return;
     try {
+      // 安全檢查
+      const sanitizedList = newTeacherList.map(teacher => {
+        const cleanTeacher = { ...teacher };
+        Object.keys(cleanTeacher).forEach(key => {
+          if (cleanTeacher[key] === undefined) {
+            cleanTeacher[key] = null;
+          }
+        });
+        return cleanTeacher;
+      });
+
       const rosterRef = doc(
         db,
         'artifacts',
@@ -209,7 +230,7 @@ const App = () => {
         'roster',
         'list'
       );
-      await setDoc(rosterRef, { teachers: newTeacherList }, { merge: true });
+      await setDoc(rosterRef, { teachers: sanitizedList }, { merge: true });
     } catch (e) {
       console.error('更新名單失敗', e);
     }
@@ -234,6 +255,23 @@ const App = () => {
     setConfirmModal((prev) => ({ ...prev, isOpen: false }));
 
   // --- Event Handlers ---
+  const handleOpenAuth = () => {
+    setPasswordInput('');
+    setPasswordError(false);
+    setIsPasswordModalOpen(true);
+  };
+
+  const handleVerifyPassword = (e) => {
+    e.preventDefault();
+    if (passwordInput === '8888') {
+      setIsPasswordModalOpen(false);
+      setIsSettingsOpen(true);
+      setSettingsTab('roster'); // 預設打開名單分頁
+    } else {
+      setPasswordError(true);
+    }
+  };
+
   const handleAddTeacher = (e) => {
     e.preventDefault();
     if (!newTeacher.name.trim()) return;
@@ -285,7 +323,7 @@ const App = () => {
         const newList = teachers.map((t) => ({
           ...t,
           totalSubstitutions: 0,
-          lastSubstitutedDate: undefined,
+          lastSubstitutedDate: null, 
         }));
         await updateRoster(newList);
         closeConfirmModal();
@@ -303,6 +341,79 @@ const App = () => {
         await updateRoster([]);
         closeConfirmModal();
       },
+    });
+  };
+
+  // --- History Management Handlers ---
+
+  const handleDeleteHistory = (record) => {
+    setConfirmModal({
+      isOpen: true,
+      title: '刪除紀錄並修正統計',
+      message: `確定要刪除「${record.date} ${record.substituteName} 代理 ${record.absentTeacherName}」這筆紀錄嗎？\n\n系統將自動將 ${record.substituteName} 老師的代理次數減 1。`,
+      confirmBtnColor: 'bg-red-500 hover:bg-red-600',
+      action: async () => {
+        try {
+          // 1. 刪除 Firestore 中的歷史紀錄
+          const historyRef = doc(db, 'artifacts', appId, 'public', 'data', 'history', record.id);
+          await deleteDoc(historyRef);
+
+          // 2. 修正老師的統計次數 (減1)
+          const teacherIndex = teachers.findIndex(t => t.id === record.substituteId);
+          if (teacherIndex !== -1) {
+            const newTeachers = [...teachers];
+            const currentCount = newTeachers[teacherIndex].totalSubstitutions || 0;
+            newTeachers[teacherIndex] = {
+              ...newTeachers[teacherIndex],
+              totalSubstitutions: Math.max(0, currentCount - 1)
+            };
+            await updateRoster(newTeachers);
+          }
+          closeConfirmModal();
+        } catch (error) {
+          console.error("Error deleting history:", error);
+          alert("刪除失敗，請檢查網路連線");
+        }
+      }
+    });
+  };
+
+  const handleClearAllHistory = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: '清空所有歷史紀錄',
+      message: '警告：確定要刪除「所有」歷史紀錄嗎？\n\n這將會根據被刪除的紀錄，自動扣除所有老師相應的代理次數，使統計回歸正確。',
+      confirmBtnColor: 'bg-red-600 hover:bg-red-700',
+      action: async () => {
+        try {
+          // 1. 計算每位老師需要扣除的次數
+          const reductions = {};
+          history.forEach(h => {
+            reductions[h.substituteId] = (reductions[h.substituteId] || 0) + 1;
+          });
+
+          // 2. 刪除所有歷史紀錄 (Firestore 需要逐筆刪除)
+          const deletePromises = history.map(h => 
+            deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'history', h.id))
+          );
+          await Promise.all(deletePromises);
+
+          // 3. 更新老師名單統計
+          const newTeachers = teachers.map(t => {
+            const deduction = reductions[t.id] || 0;
+            return {
+              ...t,
+              totalSubstitutions: Math.max(0, (t.totalSubstitutions || 0) - deduction)
+            };
+          });
+          await updateRoster(newTeachers);
+
+          closeConfirmModal();
+        } catch (error) {
+          console.error("Error clearing history:", error);
+          alert("清空失敗，部分資料可能未同步");
+        }
+      }
     });
   };
 
@@ -436,7 +547,7 @@ const App = () => {
               <AlertCircle className="w-6 h-6 text-amber-500" />
               <h3 className="text-lg font-bold">{confirmModal.title}</h3>
             </div>
-            <p className="text-slate-600 mb-6 text-sm leading-relaxed">
+            <p className="text-slate-600 mb-6 text-sm leading-relaxed whitespace-pre-line">
               {confirmModal.message}
             </p>
             <div className="flex justify-end gap-3">
@@ -460,6 +571,68 @@ const App = () => {
         </div>
       )}
 
+      {/* 密碼驗證視窗 */}
+      {isPasswordModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-xs sm:max-w-sm rounded-3xl shadow-2xl p-6 transform transition-all scale-100 animate-in zoom-in-95 duration-200 border border-slate-100">
+            <div className="flex flex-col items-center gap-4 mb-6">
+              <div className="bg-indigo-50 p-3 rounded-full">
+                <Lock className="w-8 h-8 text-indigo-600" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-xl font-black text-slate-800">
+                  管理員驗證
+                </h3>
+                <p className="text-sm text-slate-500 mt-1">
+                  請輸入密碼以進入管理中心
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleVerifyPassword} className="space-y-4">
+              <div>
+                <input
+                  type="password"
+                  placeholder="請輸入密碼"
+                  autoFocus
+                  className={`w-full text-center tracking-widest text-lg font-bold p-3 rounded-xl border outline-none transition-all ${
+                    passwordError
+                      ? 'border-red-300 focus:ring-2 focus:ring-red-200 bg-red-50'
+                      : 'border-slate-200 focus:ring-2 focus:ring-indigo-100 bg-slate-50'
+                  }`}
+                  value={passwordInput}
+                  onChange={(e) => {
+                    setPasswordInput(e.target.value);
+                    setPasswordError(false);
+                  }}
+                />
+                {passwordError && (
+                  <p className="text-xs text-red-500 text-center mt-2 font-bold animate-pulse">
+                    密碼錯誤，請重試 (Hint: 8888)
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsPasswordModalOpen(false)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-100 text-slate-500 font-bold hover:bg-slate-200 transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
+                >
+                  驗證
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* 管理中心彈窗 */}
       {isSettingsOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -468,7 +641,7 @@ const App = () => {
               <div className="flex items-center gap-3">
                 <Settings className="w-6 h-6 text-indigo-600" />
                 <h2 className="font-bold text-slate-800 text-lg">
-                  名單排序與管理
+                  管理中心
                 </h2>
               </div>
               <button
@@ -479,116 +652,218 @@ const App = () => {
               </button>
             </div>
 
+            {/* 管理分頁切換 */}
+            <div className="flex border-b border-slate-100 bg-white sticky top-0 z-10">
+               <button
+                 onClick={() => setSettingsTab('roster')}
+                 className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${settingsTab === 'roster' ? 'border-indigo-600 text-indigo-600 bg-indigo-50/30' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+               >
+                 名單與排序
+               </button>
+               <button
+                 onClick={() => setSettingsTab('history')}
+                 className={`flex-1 py-3 text-sm font-bold border-b-2 transition-colors ${settingsTab === 'history' ? 'border-indigo-600 text-indigo-600 bg-indigo-50/30' : 'border-transparent text-slate-400 hover:text-slate-600'}`}
+               >
+                 歷史紀錄修正
+               </button>
+            </div>
+
             <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-              <section className="space-y-4">
-                <div className="flex items-center gap-2 text-indigo-600 font-bold border-b pb-2">
-                  <Plus className="w-5 h-5" />
-                  <h3>新增老師</h3>
-                </div>
-                <form
-                  onSubmit={handleAddTeacher}
-                  className="flex flex-col sm:flex-row gap-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100"
-                >
-                  <div className="flex-1">
-                    <input
-                      type="text"
-                      placeholder="姓名 (例: 王小明)"
-                      required
-                      className="w-full border border-slate-300 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-bold"
-                      value={newTeacher.name}
-                      onChange={(e) =>
-                        setNewTeacher({ ...newTeacher, name: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="w-full sm:w-1/3">
-                    <input
-                      type="text"
-                      placeholder="科目 (選填)"
-                      className="w-full border border-slate-300 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
-                      value={newTeacher.subject}
-                      onChange={(e) =>
-                        setNewTeacher({
-                          ...newTeacher,
-                          subject: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 active:scale-95 transition-all shadow-md whitespace-nowrap"
-                  >
-                    同步至雲端
-                  </button>
-                </form>
+              
+              {settingsTab === 'roster' && (
+                <>
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2 text-indigo-600 font-bold border-b pb-2">
+                      <Plus className="w-5 h-5" />
+                      <h3>新增老師</h3>
+                    </div>
+                    <form
+                      onSubmit={handleAddTeacher}
+                      className="flex flex-col sm:flex-row gap-3 bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100"
+                    >
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          placeholder="姓名 (例: 王小明)"
+                          required
+                          className="w-full border border-slate-300 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white font-bold"
+                          value={newTeacher.name}
+                          onChange={(e) =>
+                            setNewTeacher({ ...newTeacher, name: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="w-full sm:w-1/3">
+                        <input
+                          type="text"
+                          placeholder="科目 (選填)"
+                          className="w-full border border-slate-300 p-3 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none bg-white"
+                          value={newTeacher.subject}
+                          onChange={(e) =>
+                            setNewTeacher({
+                              ...newTeacher,
+                              subject: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-bold text-sm hover:bg-indigo-700 active:scale-95 transition-all shadow-md whitespace-nowrap"
+                      >
+                        同步至雲端
+                      </button>
+                    </form>
 
-                <div className="space-y-2 pt-2">
-                  <div className="flex items-center gap-2 text-slate-500 font-bold text-sm mb-2">
-                    <GripVertical className="w-4 h-4" />
-                    <h3>目前輪值順序 (拖曳邏輯)</h3>
+                    <div className="space-y-2 pt-2">
+                      <div className="flex items-center gap-2 text-slate-500 font-bold text-sm mb-2">
+                        <GripVertical className="w-4 h-4" />
+                        <h3>目前輪值順序 (拖曳邏輯)</h3>
+                      </div>
+
+                      {teachers.length === 0 ? (
+                        <div className="p-10 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50">
+                          <p className="text-slate-400 font-bold">
+                            目前雲端清單是空的
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {teachers.map((t, i) => (
+                            <div
+                              key={t.id}
+                              className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-indigo-300 transition-colors group"
+                            >
+                              <div className="flex flex-col gap-1 items-center bg-slate-50 p-1 rounded-lg border border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={() => handleMove(i, 'up')}
+                                  disabled={i === 0}
+                                  className={`p-1 rounded hover:bg-indigo-100 transition-colors ${
+                                    i === 0
+                                      ? 'text-slate-200 cursor-not-allowed'
+                                      : 'text-slate-400 hover:text-indigo-600'
+                                  }`}
+                                >
+                                  <ArrowUpCircle className="w-6 h-6" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleMove(i, 'down')}
+                                  disabled={i === teachers.length - 1}
+                                  className={`p-1 rounded hover:bg-indigo-100 transition-colors ${
+                                    i === teachers.length - 1
+                                      ? 'text-slate-200 cursor-not-allowed'
+                                      : 'text-slate-400 hover:text-indigo-600'
+                                  }`}
+                                >
+                                  <ArrowDownCircle className="w-6 h-6" />
+                                </button>
+                              </div>
+                              <div className="flex-1 pl-2">
+                                <div className="flex items-center gap-2">
+                                  <span className="bg-slate-100 text-slate-500 text-xs font-mono px-2 py-0.5 rounded">
+                                    {i + 1}
+                                  </span>
+                                  <span className="font-bold text-slate-800 text-lg">
+                                    {t.name}
+                                  </span>
+                                  <span className="text-xs text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border">
+                                    {t.subject}
+                                  </span>
+                                </div>
+                                <div className="text-[10px] text-slate-400 mt-0.5">
+                                  累計代理: {t.totalSubstitutions} 次
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveTeacher(t.id)}
+                                className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-90"
+                                title="刪除此老師"
+                              >
+                                <Trash2 className="w-5 h-5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </section>
+
+                  <section className="mt-8 pt-6 border-t border-slate-100">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" /> 進階雲端選項
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <button
+                        onClick={handleResetCounts}
+                        className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 text-slate-500 transition-all active:scale-95"
+                      >
+                        <RefreshCcw className="w-6 h-6" />
+                        <span className="text-sm font-bold">全域歸零</span>
+                      </button>
+                      <button
+                        onClick={handleClearAll}
+                        className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 transition-all active:scale-95"
+                      >
+                        <UserMinus className="w-6 h-6" />
+                        <span className="text-sm font-bold">清空名單</span>
+                      </button>
+                    </div>
+                  </section>
+                </>
+              )}
+
+              {settingsTab === 'history' && (
+                <section className="space-y-4">
+                  <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 mb-6">
+                     <h4 className="flex items-center gap-2 text-amber-800 font-bold mb-2">
+                       <AlertCircle className="w-4 h-4"/> 修正模式說明
+                     </h4>
+                     <p className="text-xs text-amber-700 leading-relaxed">
+                       此處用於刪除錯誤的歷史紀錄。<strong>刪除紀錄的同時，系統會自動減少該位專任老師的「累計代理次數」</strong>，以維持工作量統計的正確性。
+                     </p>
                   </div>
 
-                  {teachers.length === 0 ? (
+                  <div className="flex justify-between items-center pb-2 border-b">
+                     <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                       <HistoryIcon className="w-5 h-5 text-indigo-500" />
+                       已結案紀錄 ({history.length})
+                     </h3>
+                     {history.length > 0 && (
+                       <button
+                         onClick={handleClearAllHistory}
+                         className="text-xs px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 font-bold transition-colors flex items-center gap-1"
+                       >
+                         <Eraser className="w-3 h-3" /> 清空所有紀錄
+                       </button>
+                     )}
+                  </div>
+
+                  {history.length === 0 ? (
                     <div className="p-10 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50">
                       <p className="text-slate-400 font-bold">
-                        目前雲端清單是空的
+                        目前沒有任何歷史紀錄
                       </p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {teachers.map((t, i) => (
-                        <div
-                          key={t.id}
-                          className="flex items-center gap-3 p-3 bg-white border border-slate-200 rounded-xl shadow-sm hover:border-indigo-300 transition-colors group"
-                        >
-                          <div className="flex flex-col gap-1 items-center bg-slate-50 p-1 rounded-lg border border-slate-100">
-                            <button
-                              type="button"
-                              onClick={() => handleMove(i, 'up')}
-                              disabled={i === 0}
-                              className={`p-1 rounded hover:bg-indigo-100 transition-colors ${
-                                i === 0
-                                  ? 'text-slate-200 cursor-not-allowed'
-                                  : 'text-slate-400 hover:text-indigo-600'
-                              }`}
-                            >
-                              <ArrowUpCircle className="w-6 h-6" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleMove(i, 'down')}
-                              disabled={i === teachers.length - 1}
-                              className={`p-1 rounded hover:bg-indigo-100 transition-colors ${
-                                i === teachers.length - 1
-                                  ? 'text-slate-200 cursor-not-allowed'
-                                  : 'text-slate-400 hover:text-indigo-600'
-                              }`}
-                            >
-                              <ArrowDownCircle className="w-6 h-6" />
-                            </button>
-                          </div>
-                          <div className="flex-1 pl-2">
-                            <div className="flex items-center gap-2">
-                              <span className="bg-slate-100 text-slate-500 text-xs font-mono px-2 py-0.5 rounded">
-                                {i + 1}
-                              </span>
-                              <span className="font-bold text-slate-800 text-lg">
-                                {t.name}
-                              </span>
-                              <span className="text-xs text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border">
-                                {t.subject}
-                              </span>
+                      {history.map((h) => (
+                        <div key={h.id} className="flex items-center justify-between p-4 bg-white border border-slate-200 rounded-xl hover:shadow-sm transition-all group">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                               <span className="text-xs font-mono font-bold text-slate-400 bg-slate-100 px-1.5 rounded">{h.date}</span>
+                               <span className="font-bold text-slate-800">{h.substituteName}</span>
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              累計代理: {t.totalSubstitutions} 次
+                            <div className="text-xs text-slate-500">
+                               代理 <span className="font-bold text-slate-700">{h.absentTeacherName}</span> 老師
                             </div>
                           </div>
                           <button
-                            type="button"
-                            onClick={() => handleRemoveTeacher(t.id)}
-                            className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all active:scale-90"
-                            title="刪除此老師"
+                            onClick={() => handleDeleteHistory(h)}
+                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="刪除並修正次數"
                           >
                             <Trash2 className="w-5 h-5" />
                           </button>
@@ -596,30 +871,9 @@ const App = () => {
                       ))}
                     </div>
                   )}
-                </div>
-              </section>
+                </section>
+              )}
 
-              <section className="mt-8 pt-6 border-t border-slate-100">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4" /> 進階雲端選項
-                </h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={handleResetCounts}
-                    className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-amber-50 hover:border-amber-200 hover:text-amber-700 text-slate-500 transition-all active:scale-95"
-                  >
-                    <RefreshCcw className="w-6 h-6" />
-                    <span className="text-sm font-bold">全域歸零</span>
-                  </button>
-                  <button
-                    onClick={handleClearAll}
-                    className="flex flex-col items-center justify-center gap-2 p-4 bg-white border border-slate-200 rounded-xl hover:bg-red-50 hover:border-red-200 hover:text-red-600 text-slate-500 transition-all active:scale-95"
-                  >
-                    <UserMinus className="w-6 h-6" />
-                    <span className="text-sm font-bold">清空名單</span>
-                  </button>
-                </div>
-              </section>
             </div>
 
             <div className="p-4 bg-slate-50 border-t flex justify-center">
@@ -666,7 +920,7 @@ const App = () => {
               <span className="hidden sm:inline">申請代理</span>
             </button>
             <button
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={handleOpenAuth} /* 修改這裡：觸發密碼驗證 */
               className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl border border-white/20 active:scale-95 transition-all flex items-center gap-2"
             >
               <Settings className="w-5 h-5" />
