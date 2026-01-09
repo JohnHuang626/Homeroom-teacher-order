@@ -243,6 +243,23 @@ const App = () => {
     () => new Set(activeRequests.map((r) => r.substituteId)),
     [activeRequests]
   );
+
+  // 新增：計算「所選日期當天」已經有任務的老師 ID
+  const busyOnSelectedDate = useMemo(() => {
+    const selectedDate = newRequest.date;
+    if (!selectedDate) return new Set();
+    
+    return new Set(
+      requests
+        .filter(
+          (r) =>
+            r.date === selectedDate &&
+            (r.status === 'pending' || r.status === 'accepted')
+        )
+        .map((r) => r.substituteId)
+    );
+  }, [requests, newRequest.date]);
+
   const availableTeachers = teachers.filter((t) => t.isAvailable);
   const nextRecommendedTeacher = useMemo(
     () =>
@@ -993,7 +1010,9 @@ const App = () => {
                     }
                   >
                     <option value="">請選擇一位專任老師</option>
-                    {availableTeachers.map((t) => (
+                    {availableTeachers
+                      .filter(t => !busyOnSelectedDate.has(t.id)) // 關鍵修改：過濾掉當天已有任務的老師
+                      .map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name} ({t.subject}){' '}
                         {t.id === nextRecommendedTeacher?.id
